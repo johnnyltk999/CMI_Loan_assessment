@@ -1,19 +1,10 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import {
-  UserPlus,
-  LogOut,
-  Trash2,
-  Pencil,
-  AlertTriangle,
-  X,
-} from "lucide-react";
+import { UserPlus, Trash2, Pencil, AlertTriangle, X } from "lucide-react";
 import { authService } from "@/services/authService";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://ec2-54-251-49-141.ap-southeast-1.compute.amazonaws.com";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface User {
   id: number;
@@ -27,22 +18,28 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [showDeleteModal, setShowDeleteModal] = useState(false); // State สำหรับ Modal
-  const [userToDelete, setUserToDelete] = useState<User | null>(null); // State สำหรับเก็บข้อมูลผู้ใช้ที่จะลบ
-  const [isDeleting, setIsDeleting] = useState(false); // State สำหรับ Loading ตอนลบ
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState({
+    fullname: "",
+    username: "",
+    role: "",
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  // ฟังก์ชันดึงข้อมูลผู้ใช้งาน (ถูกห่อด้วย useCallback เพื่อป้องกันการสร้างซ้ำ)
+  // ฟังก์ชันดึงข้อมูลผู้ใช้งาน
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError("");
 
     const token = authService.getToken();
-    // console.log("Token from Cookie:", token ? "Found" : "Not Found");
 
     if (!token) {
       setError("Token not found. Please login.");
       setLoading(false);
-      // router.push("/login"); // Comment out redirect here to prevent loop on failed API calls
       return;
     }
 
@@ -76,15 +73,78 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]); // ใช้ fetchUsers ใน dependency array
+  }, [fetchUsers]);
 
-  // 1. ฟังก์ชันเปิด Modal ยืนยันการลบ
+  // ฟังก์ชันเปิด Modal แก้ไข
+  const handleEdit = (user: User) => {
+    setUserToEdit(user);
+    setEditForm({
+      fullname: user.fullname,
+      username: user.username,
+      role: user.role,
+    });
+    setShowEditModal(true);
+  };
+
+  // ฟังก์ชันเรียก API สำหรับแก้ไขจริง
+  const confirmEdit = async () => {
+    if (!userToEdit) return;
+
+    setIsUpdating(true);
+    setError("");
+
+    const token = authService.getToken();
+    if (!token) {
+      setError("Authorization token missing.");
+      setIsUpdating(false);
+      setShowEditModal(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/users/${userToEdit.id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(editForm),
+      });
+
+      if (res.status === 401) {
+        setError("Unauthorized. Session expired. Redirecting...");
+        authService.logout();
+        router.push("/login");
+        return;
+      }
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(
+          errorData.message || `Failed to update user ID: ${userToEdit.id}`
+        );
+      }
+
+      // อัปเดตสำเร็จ: อัปเดตรายการผู้ใช้งาน
+      setUsers(
+        users.map((u) => (u.id === userToEdit.id ? { ...u, ...editForm } : u))
+      );
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred during update.");
+    } finally {
+      setIsUpdating(false);
+      setShowEditModal(false);
+      setUserToEdit(null);
+    }
+  };
+
+  // ฟังก์ชันเปิด Modal ยืนยันการลบ
   const handleDelete = (user: User) => {
     setUserToDelete(user);
     setShowDeleteModal(true);
   };
 
-  // 2. ฟังก์ชันเรียก API สำหรับลบจริง
+  // ฟังก์ชันเรียก API สำหรับลบจริง
   const confirmDelete = async () => {
     if (!userToDelete) return;
 
@@ -133,16 +193,100 @@ export default function UsersPage() {
     }
   };
 
-  const handleEdit = (userId: number) => {
-    console.log(`Editing user with ID: ${userId}`);
-    // Implement navigation to edit page here: router.push(`/users/edit/${userId}`);
-  };
-
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="">
+      {/* Edit User Modal */}
+      {showEditModal && userToEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md transform transition-all">
+            <div className="flex justify-between items-start">
+              <h3 className="text-xl font-bold text-blue-600 flex items-center">
+                <Pencil className="w-6 h-6 mr-2" />
+                Edit User
+              </h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition"
+                disabled={isUpdating}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mt-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={editForm.fullname}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, fullname: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isUpdating}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={editForm.username}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, username: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isUpdating}
+                />
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Role
+                </label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, role: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isUpdating}
+                >
+                  <option value="ADMIN">ADMIN</option>
+                  <option value="MANAGER">MANAGER</option>
+                  <option value="USER">USER</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
+                disabled={isUpdating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmEdit}
+                className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition flex items-center"
+                disabled={isUpdating}
+              >
+                {isUpdating ? (
+                  <div className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                ) : (
+                  <Pencil className="w-4 h-4 mr-2" />
+                )}
+                {isUpdating ? "Updating..." : "Update"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation Modal */}
       {showDeleteModal && userToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center  backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md transform transition-all">
             <div className="flex justify-between items-start">
               <h3 className="text-xl font-bold text-red-600 flex items-center">
@@ -199,14 +343,14 @@ export default function UsersPage() {
             User Management
           </h1>
           <div className="flex items-center space-x-3">
-            <button
+            {/* <button
               onClick={() => router.push("/dashboard/users/createUsers")}
               className="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150 ease-in-out flex items-center text-sm"
-              disabled={loading || isDeleting}
+              disabled={loading || isDeleting || isUpdating}
             >
               <UserPlus className="w-4 h-4 mr-2" />
               Add User
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -285,10 +429,10 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2">
                       <button
-                        onClick={() => handleEdit(u.id)}
+                        onClick={() => handleEdit(u)}
                         title="Edit User"
                         className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full hover:bg-indigo-50 transition"
-                        disabled={isDeleting}
+                        disabled={isDeleting || isUpdating}
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -296,7 +440,7 @@ export default function UsersPage() {
                         onClick={() => handleDelete(u)}
                         title="Delete User"
                         className="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition"
-                        disabled={isDeleting}
+                        disabled={isDeleting || isUpdating}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

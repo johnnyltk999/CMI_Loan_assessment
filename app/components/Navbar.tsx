@@ -1,11 +1,14 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
+
 import { useRouter } from "next/navigation";
+
 import { LogOut, User as UserIcon } from "lucide-react";
 
 export default function DashboardPage() {
   const { user, logout, loading } = useAuth();
+
   const router = useRouter();
 
   //   if (loading) {
@@ -18,18 +21,19 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     await logout();
+
     router.push("/login");
   };
 
   return (
-    <div className=" bg-gray-50">
+    <div className="bg-gray-50">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-800">
+              {/* <h1 className="text-xl font-semibold text-gray-800">
                 CMI Loan Assessment
-              </h1>
+              </h1> */}
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
